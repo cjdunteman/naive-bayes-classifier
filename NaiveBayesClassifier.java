@@ -1,28 +1,34 @@
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 /**
  * Your implementation of a naive bayes classifier. Please implement all four methods.
  */
 
 public class NaiveBayesClassifier implements Classifier {
+    private Map<Label, Integer> docPerLabel;
+    private Map<Label, Integer> wordPerLabel;
+
+    private Map<String, Integer> posWords;
+    private Map<String, Integer> negWords;
+
+    private double docs;
+    private double vocab;
 
     /**
      * Trains the classifier with the provided training data and vocabulary size
      */
     @Override
     public void train(List<Instance> trainData, int v) {
-        // TODO : Implement
-        // Hint: First, calculate the documents and words counts per label and store them. 
-        // Then, for all the words in the documents of each label, count the number of occurrences of each word.
-        // Save these information as you will need them to calculate the log probabilities later.
-        //
-        // e.g.
-        // Assume m_map is the map that stores the occurrences per word for positive documents
-        // m_map.get("catch") should return the number of "catch" es, in the documents labeled positive
-        // m_map.get("asdasd") would return null, when the word has not appeared before.
-        // Use m_map.put(word,1) to put the first count in.
-        // Use m_map.replace(word, count+1) to update the value
+        this.docPerLabel = this.getDocumentsCountPerLabel(trainData);
+        this.wordPerLabel = this.getWordsCountPerLabel(trainData);
+
+        this.negWords = this.getWordOccurrences(Label.NEGATIVE, trainData);
+        this.posWords = this.getWordOccurrences(Label.POSITIVE, trainData);
+
+        this.docs = trainData.size();
+        this.vocab = v;
     }
 
     /*
@@ -30,8 +36,24 @@ public class NaiveBayesClassifier implements Classifier {
      */
     @Override
     public Map<Label, Integer> getWordsCountPerLabel(List<Instance> trainData) {
-        // TODO : Implement
-        return null;
+        Map<Label, Integer> map = new HashMap<>();
+        int posCount = 0;
+        int negCount = 0;
+
+        for (Instance inst : trainData) {
+            if (inst.label == Label.NEGATIVE) {
+                negCount += inst.words.size();
+            }
+            else {
+                posCount += inst.words.size();
+            }
+        }
+
+        map.put(Label.NEGATIVE, negCount);
+        map.put(Label.POSITIVE, posCount);
+
+
+        return map;
     }
 
 
@@ -40,8 +62,44 @@ public class NaiveBayesClassifier implements Classifier {
      */
     @Override
     public Map<Label, Integer> getDocumentsCountPerLabel(List<Instance> trainData) {
-        // TODO : Implement
-        return null;
+        Map<Label, Integer> map = new HashMap<>();
+        Integer neg = 0;
+        Integer pos = 0;
+
+        for (Instance inst: trainData) {
+            if (inst.label == Label.POSITIVE) {
+                pos++;
+            }
+            else {
+                neg++;
+            }
+        }
+
+        map.put(Label.POSITIVE, pos);
+        map.put(Label.NEGATIVE, neg);
+
+        return map;
+    }
+
+    private Map<String, Integer> getWordOccurrences(Label label, List<Instance> trainData) {
+        Map<String, Integer> values = new HashMap<>();
+
+        for (Instance inst: trainData) {
+            if (inst.label == label) {
+                List<String> words = inst.words;
+                for (String w: words) {
+                    if (values.containsKey(w)) {
+                        int count = values.get(w);
+                        values.replace(w, count + 1);
+                    }
+                    else {
+                        values.put(w, 1);
+                    }
+                }
+            }
+        }
+
+        return values;
     }
 
 
@@ -49,10 +107,13 @@ public class NaiveBayesClassifier implements Classifier {
      * Returns the prior probability of the label parameter, i.e. P(POSITIVE) or P(NEGATIVE)
      */
     private double p_l(Label label) {
-        // TODO : Implement
-        // Calculate the probability for the label. No smoothing here.
-        // Just the number of label counts divided by the number of documents.
-        return 0;
+        if (this.docs == 0) {
+//
+            return 0;
+        }
+
+        double count = this.docPerLabel.get(label);
+        return count / this.docs;
     }
 
     /**
@@ -60,9 +121,26 @@ public class NaiveBayesClassifier implements Classifier {
      * P(word|NEGATIVE)
      */
     private double p_w_given_l(String word, Label label) {
-        // TODO : Implement
-        // Calculate the probability with Laplace smoothing for word in class(label)
-        return 0;
+//
+        double num = 0.0;
+        double denom = this.wordPerLabel.get(label);
+
+        if (label == Label.NEGATIVE) {
+            num = this.negWords.getOrDefault(word, 0);
+        }
+        else {
+            num = this.posWords.getOrDefault(word, 0);
+        }
+
+        double double1 = 1;
+        double num2 = num + double1;
+        double num3 = (this.vocab * double1) + denom;
+
+        if (num3 == 0.0) {
+            return 0.0;
+        }
+
+        return num2 / num3;
     }
 
     /**
@@ -70,10 +148,34 @@ public class NaiveBayesClassifier implements Classifier {
      */
     @Override
     public ClassifyResult classify(List<String> words) {
-        // TODO : Implement
-        // Sum up the log probabilities for each word in the input data, and the probability of the label
-        // Set the label to the class with larger log probability
-        return null;
+        ClassifyResult result = new ClassifyResult();
+        double negCond = 0;
+        Map<Label, Double> map = new HashMap<>();
+        double posCond = 0;
+
+        double negProbLabel = this.p_l(Label.NEGATIVE) == 0.0 ? 0.0 : Math.log(this.p_l(Label.NEGATIVE));
+
+        for (String w: words) {
+            negCond += Math.log(this.p_w_given_l(w, Label.NEGATIVE));
+        }
+        map.put(Label.NEGATIVE, negProbLabel + negCond);
+
+        double posProbLabel = this.p_l(Label.POSITIVE) == 0.0 ? 0.0 : Math.log(this.p_l(Label.POSITIVE));
+
+        for (String w: words) {
+            posCond += Math.log(this.p_w_given_l(w, Label.POSITIVE));
+        }
+        map.put(Label.POSITIVE, posProbLabel + posCond);
+
+        if (map.get(Label.NEGATIVE) > map.get(Label.POSITIVE)) {
+            result.label = Label.NEGATIVE;
+        }
+        else {
+            result.label = Label.POSITIVE;
+        }
+
+        result.logProbPerLabel = map;
+        return result;
     }
 
 
